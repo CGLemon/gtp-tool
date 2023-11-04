@@ -4,6 +4,53 @@ import queue
 import sys
 import time
 
+class GtpColor:
+    BLACK = "b"
+    WHITE = "w"
+    INVLD = None
+
+    def __init__(self, val=None):
+        self._color = None
+        self.set(val)
+
+    def set(self, val):
+        if val == None:
+            self._color = INVLD
+            return
+
+        if not isinstance(val, str):
+            raise Exception("Not a color data.")
+        if val.lower() in [ "b", "black" ]:
+            self._color = self.BLACK
+        elif val.lower() in [ "w", "white" ]:
+            self._color = self.WHITE
+        else:
+            raise Exception("Invalid color.")
+
+    def get(self):
+        return self._color
+
+    def to_str(self):
+        if self._color == self.BLACK:
+            return "b"
+        elif self._color == self.WHITE:
+            return "w"
+        raise Exception("Invalid color.")
+
+    def __str__(self):
+        return self.to_str()
+
+    def next(self, inplace=False):
+        if self._color == self.BLACK:
+            if inplace:
+                self._color = self.WHITE
+            return GtpColor(self.WHITE)
+        elif self._color == self.WHITE:
+            if inplace:
+                self._color = self.BLACK
+            return GtpColor(self.BLACK)
+        raise Exception("Invalid color.")
+
 class GtpVertex:
     PASS_STR = "pass"
     RESIGN_STR = "resign"
@@ -27,6 +74,9 @@ class GtpVertex:
                 self._vertex = val
         else:
             raise Exception("Not a vertex data.")
+
+    def get(self):
+        return self._vertex
 
     def _parse_coord(self, val):
         try:
@@ -70,7 +120,7 @@ class GtpVertex:
 
     def to_str(self):
         if self._vertex is None:
-            raise Exception("None vertex.")
+            raise Exception("Invalid vertex.")
 
         if isinstance(self._vertex, int):
             if self._vertex == self.PASS_VERTEX:
@@ -83,9 +133,6 @@ class GtpVertex:
 
     def __str__(self):
         return self.to_str()
-
-    def get(self):
-        return self._vertex
 
 class Query:
     NORMAL = 1
@@ -116,9 +163,9 @@ class Query:
         return self.to_str()
 
 class GTPEnginePipe:
-    def __init__(self, args):
+    def __init__(self, command):
         self._engine = subprocess.Popen(
-            args.split(),
+            command.split(),
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -273,9 +320,9 @@ class GTPEnginePipe:
             t.join()
 
 class GtpEngineBase:
-    def __init__(self, args):
-        self.args = args
-        self._pipe = GTPEnginePipe(args)
+    def __init__(self, command):
+        self.command = command
+        self._pipe = GTPEnginePipe(command)
         self._supported_list = [
             "list_commands"
         ]
@@ -358,28 +405,29 @@ class GtpEngineBase:
         self._pipe.wait_to_join()
 
 class GtpEngine(GtpEngineBase):
-    def __init__(self, args):
-        super().__init__(args)
+    SUPPORTED_LIST = [
+        "name",
+        "version",
+        "protocol_version",
+        "list_commands",
+        "clear_board",
+        "boardsize",
+        "showboard",
+        "komi",
+        "play",
+        "genmove",
+        "quit"
+    ]
 
-        self.analysis_type = None
-        self.genmove_type = None
+    def __init__(self, command):
+        super().__init__(command)
         self.raise_err = False
         self._self_check()
 
     def _self_check(self):
-        if not self.support("name") or \
-               not self.support("version") or \
-               not self.support("protocol_version") or \
-               not self.support("list_commands") or \
-               not self.support("clear_board") or \
-               not self.support("boardsize") or \
-               not self.support("showboard") or \
-               not self.support("komi") or \
-               not self.support("play") or \
-               not self.support("undo") or \
-               not self.support("genmove") or \
-               not self.support("quit"):
-            raise Exception("It is a bad GTP engine")
+        for c in self.SUPPORTED_LIST:
+            if not self.support(c):
+                raise Exception("Need to support for GTP command: {}.".format(c))
 
     def return_response(self):
         return self.get_last_response(self.raise_err)
@@ -412,10 +460,6 @@ class GtpEngine(GtpEngineBase):
         self.send_command("showboard")
         return self.return_response()
 
-    def undo(self):
-        self.send_command("undo")
-        return self.return_response()
-
     def komi(self, komi):
         self.send_command("komi {}".format(komi))
         return self.return_response()
@@ -426,7 +470,7 @@ class GtpEngine(GtpEngineBase):
 
     def quit(self):
         self.send_command("quit")
-        self.idle(0.1)
+        self.idle(0.1) # Wait for handling the quit command.
 
     def genmove(self, color):
         self.send_command("genmove {}".format(color))
@@ -441,11 +485,10 @@ if __name__ == '__main__':
 
         print(gnugo.name())
         print(gnugo.version())
-        print(gnugo.play("b", str(GtpVertex((1,2)))))
-        print(str(GtpVertex((1,2))))
+        print(gnugo.play(GtpColor(GtpColor.BLACK), str(GtpVertex((1,2)))))
         print(gnugo.showboard())
+
         gnugo.quit()
         gnugo.shutdown()
-
     except Exception as err:
         sys.stderr.write("{}\n".format(str(err)))
