@@ -413,6 +413,7 @@ class GtpEngine(GtpEngineBase):
         "clear_board",
         "boardsize",
         "showboard",
+        "loadsgf",
         "komi",
         "play",
         "genmove",
@@ -458,6 +459,14 @@ class GtpEngine(GtpEngineBase):
 
     def showboard(self):
         self.send_command("showboard")
+        return self.return_response()
+
+    def loadsgf(self, sgf, movenum=None):
+        if movenum is None:
+            cmd = "loadsgf {}".format(sgf)
+        else:
+            cmd = "loadsgf {} {}".format(sgf, movenum)
+        self.send_command(cmd)
         return self.return_response()
 
     def komi(self, komi):
