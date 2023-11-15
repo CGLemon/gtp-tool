@@ -31,21 +31,27 @@ class GtpColor:
         return self._color
 
     def to_str(self):
-        if self._color == self.BLACK:
+        if self.is_black():
             return "b"
-        elif self._color == self.WHITE:
+        elif self.is_white():
             return "w"
         raise Exception("Invalid color.")
+
+    def is_black(self):
+        return self._color == self.BLACK
+
+    def is_white(self):
+        return self._color == self.WHITE
 
     def __str__(self):
         return self.to_str()
 
     def next(self, inplace=False):
-        if self._color == self.BLACK:
+        if self.is_black():
             if inplace:
                 self._color = self.WHITE
             return GtpColor(self.WHITE)
-        elif self._color == self.WHITE:
+        elif self.is_white():
             if inplace:
                 self._color = self.BLACK
             return GtpColor(self.BLACK)

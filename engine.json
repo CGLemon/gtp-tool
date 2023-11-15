@@ -1,26 +1,23 @@
 [
     {
         "name" : "GNU Go Judge",
-        "command" : "gnugo --mode gtp --level 10 --chinese-rules",
+        "command" : "gnugo --mode gtp --chinese-rules",
         "type" : "judge",
-        "elo" : null,
-        "path" : null
+        "default elo" : null
     },
 
     {
         "name" : "GNU Go Lv10",
         "command" : "gnugo --mode gtp --level 10 --chinese-rules",
         "type" : "player",
-        "elo" : 1800,
-        "path" : "."
+        "default elo" : 1800
     },
 
     {
         "name" : "GNU Go Lv8",
         "command" : "gnugo --mode gtp --level 8 --chinese-rules",
         "type" : "player",
-        "elo" : 1800,
-        "path" : null
+        "default elo" : 1800
     }
 
 ]
