@@ -5,6 +5,7 @@ import hashlib
 import glob, os
 from datetime import datetime
 from gtp import GtpVertex, GtpColor, GtpEngine
+from sgf_loader import SgfLoader
 
 class JudgeGtpEngine(GtpEngine):
     EXTENDED_SUPPORTED_LIST = [
@@ -98,18 +99,28 @@ class MatchTool:
 
     def _init_engines(self, black, white, judge):
         random.shuffle(self.sgf_files)
+        loader = None
+        while len(self.sgf_files) > 0:
+            try:
+                loader = SgfLoader(self.sgf_files[0])
+                if loader.board_size != self.board_size:
+                    raise Exception("The boardsize is incorrect.")
+                break
+            except Exception as err:
+                sgf = self.sgf_files.pop(0)
+
         for e in [black, white, judge]:
             e.clear_board()
             e.boardsize(self.board_size)
             e.komi(self.komi)
-            if len(self.sgf_files) > 0:
-                try:
-                    e.loadsgf(self.sgf_files[0])
-                except Exception as err:
-                    sgf = self.sgf_files.pop(0)
-                    self._init_engines(black, white, judge)
-                    print("Can not load the SGF file: {}".format(sgf))
-                    break
+            try:
+                if loader is not None:
+                    for c, vtx in loader.history:
+                        e.play(str(c), str(vtx))
+            except Exception as err:
+                sgf = self.sgf_files.pop(0)
+                self._init_engines(black, white, judge)
+                break
 
     def _save_sgf(self, black, white, history, result):
         now = datetime.now()
@@ -263,20 +274,20 @@ if __name__ == '__main__':
     parser.add_argument("-b", "--boardsize",
                         type=int,
                         metavar="<int>",
-                        default=9,
+                        default=19,
                         help="Play the match games with this board size.")
     parser.add_argument("-k", "--komi",
                         type=float,
                         metavar="<float>",
-                        default=7.0,
+                        default=7.5,
                         help="Play the match games with this komi.")
     parser.add_argument("-g", "--num-games",
                         type=int,
                         metavar="<int>",
                         default=0,
                         help="The number of played games.")
-
     args = parser.parse_args()
+    
     if args.engines is None:
         print("Please give the engines json file.")
         exit()
