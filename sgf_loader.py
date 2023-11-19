@@ -1,4 +1,5 @@
 from gtp import GtpVertex, GtpColor
+import random
 
 class SgfLoader:
     def __init__(self, filename):
@@ -8,12 +9,12 @@ class SgfLoader:
         self._load(filename)
 
     def _process_key_value(self, key, val):
-        def as_gtp_move(m, size=self.board_size):
+        def as_gtp_move(m, bsize=self.board_size):
             if len(m) == 0 or m == "tt":
                 return GtpVertex("pass")
             x = ord(m[0]) - ord('a')
-            y = ord(m[0]) - ord('a')
-            y = size - 1 - y
+            y = ord(m[1]) - ord('a')
+            y = bsize - 1 - y
             return GtpVertex((x,y))
 
         if key == "SZ":
@@ -32,6 +33,7 @@ class SgfLoader:
             with open(filename, "r") as f:
                 sgf = f.read()
             self._parse(sgf)
+            self._apply_symm()
         except Exception as err:
             print(err)
 
@@ -61,3 +63,24 @@ class SgfLoader:
                 idx = end+1
             else:
                 key += c
+
+    def _apply_symm(self):
+        def move_symm(vtx, symm, bsize=self.board_size):
+            if vtx.is_move():
+                x, y = vtx.get()
+                if symm & 4:
+                    x, y = y, x
+                if symm & 4:
+                    x = bsize - 1 - x
+                if symm & 4:
+                    y = bsize - 1 - y
+                vtx = GtpVertex((x,y))
+            return vtx
+
+        symm_history = list()
+        symm = random.randint(0, 7)
+        for c, vtx in self.history:
+            vtx = move_symm(vtx, symm)
+            symm_history.append((c, vtx))
+        self.history, symm_history = symm_history, self.history
+
