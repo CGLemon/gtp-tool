@@ -100,6 +100,7 @@ class MatchTool:
     def _init_engines(self, black, white, judge):
         random.shuffle(self.sgf_files)
         loader = None
+        history = list()
         while len(self.sgf_files) > 0:
             try:
                 loader = SgfLoader(self.sgf_files[0])
@@ -115,12 +116,13 @@ class MatchTool:
             e.komi(self.komi)
             try:
                 if loader is not None:
+                    history = loader.history
                     for c, vtx in loader.history:
                         e.play(str(c), str(vtx))
             except Exception as err:
                 sgf = self.sgf_files.pop(0)
-                self._init_engines(black, white, judge)
-                break
+                return self._init_engines(black, white, judge)
+        return history
 
     def _save_sgf(self, black, white, history, result):
         now = datetime.now()
@@ -170,8 +172,7 @@ class MatchTool:
             str(GtpColor(GtpColor.WHITE)) : white["engine"]
         }
         judge = self._judge_gtp
-
-        self._init_engines(black["engine"], white["engine"], judge)
+        history = self._init_engines(black["engine"], white["engine"], judge)
 
         num_passes = 0;
         c = GtpColor(GtpColor.BLACK)
