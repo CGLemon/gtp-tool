@@ -101,6 +101,7 @@ class MatchTool:
         random.shuffle(self.sgf_files)
         loader = None
         history = list()
+        curr_color = GtpColor(GtpColor.BLACK)
         while len(self.sgf_files) > 0:
             try:
                 loader = SgfLoader(self.sgf_files[0])
@@ -122,7 +123,10 @@ class MatchTool:
             except Exception as err:
                 sgf = self.sgf_files.pop(0)
                 return self._init_engines(black, white, judge)
-        return history
+        if len(history) > 0:
+            c, _ = history[-1]
+            curr_color = c.next()
+        return history, curr_color
 
     def _save_sgf(self, black, white, history, result):
         now = datetime.now()
@@ -172,10 +176,9 @@ class MatchTool:
             str(GtpColor(GtpColor.WHITE)) : white["engine"]
         }
         judge = self._judge_gtp
-        history = self._init_engines(black["engine"], white["engine"], judge)
+        history, c = self._init_engines(black["engine"], white["engine"], judge)
 
         num_passes = 0;
-        c = GtpColor(GtpColor.BLACK)
         winner, loser = None, None
 
         while True:
@@ -186,7 +189,7 @@ class MatchTool:
 
             if vtx.is_resign():
                 winner, loser = players[str(c.next())], players[str(c)]
-                result = "{}+Resign".format(str(c).upper()[:1])
+                result = "{}+Resign".format(str(c.next()).upper()[:1])
                 break
 
             rep = judge.is_legal(str(c), str(vtx))
@@ -194,7 +197,7 @@ class MatchTool:
             # 1 is legal 
             if int(rep) == 0:
                 winner, loser = players[str(c.next())], players[str(c)]
-                result = "{}+Illegal".format(str(c).upper()[:1])
+                result = "{}+Illegal".format(str(c.next()).upper()[:1])
                 break
 
             if vtx.is_pass():
