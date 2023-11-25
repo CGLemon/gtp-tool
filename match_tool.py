@@ -76,6 +76,7 @@ class MatchTool:
             raise Exception("Need to setup judge engine.")
         self.board_size = args.boardsize
         self.komi = args.komi
+        self.sample_rate = args.sample_rate
         self.sgf_files = list()
         self.save_dir = args.save_dir
 
@@ -97,12 +98,16 @@ class MatchTool:
                       name, b_wdl[0], b_wdl[1], b_wdl[2], w_wdl[0], w_wdl[1], w_wdl[2])
             print(res)
 
+    def _roulette(self, prob):
+        r = random.random()
+        return r < prob
+
     def _init_engines(self, black, white, judge):
         random.shuffle(self.sgf_files)
         loader = None
         history = list()
         curr_color = GtpColor(GtpColor.BLACK)
-        while len(self.sgf_files) > 0:
+        while len(self.sgf_files) > 0 and self._roulette(self.sample_rate):
             try:
                 loader = SgfLoader(self.sgf_files[0])
                 if loader.board_size != self.board_size:
@@ -275,6 +280,11 @@ if __name__ == '__main__':
                         metavar="<save-path>",
                         default=None,
                         help="Save the SGF file here.")
+    parser.add_argument("-s", "--sample-rate",
+                        type=float,
+                        metavar="<0.0 ~ 1.0>",
+                        default=0.5,
+                        help="The probability to start from SGF file.")
     parser.add_argument("-b", "--boardsize",
                         type=int,
                         metavar="<int>",
