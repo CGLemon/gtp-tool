@@ -88,15 +88,7 @@ class MatchTool:
                 os.makedirs(path)
 
     def show_match_result(self):
-        self._status.sort(key=lambda s: s["name"])
-        print("[ name ] -> [ black (W/D/L) ] [ white (W/D/L) ]")
-        for s in self._status:
-            name = s["name"]
-            b_wdl = s["black-WDL"]
-            w_wdl = s["white-WDL"]
-            res = "{} -> ({}/{}/{}) ({}/{}/{})".format(
-                      name, b_wdl[0], b_wdl[1], b_wdl[2], w_wdl[0], w_wdl[1], w_wdl[2])
-            print(res)
+        print(self._get_match_result_str())
 
     def _roulette(self, prob):
         r = random.random()
@@ -162,11 +154,28 @@ class MatchTool:
             with open(sgf_path, "w") as f:
                 f.write(sgf)
 
+    def _save_match_result(self):
+        res = self._get_match_result_str()
+        with open(os.path.join(self.save_dir, "result.txt"), "w") as f:
+            f.write(res)
+
     def _sample_engines(self):
         random.shuffle(self._status)
         black = self._status.pop(0)
         white = self._status.pop(0)
         return black, white
+
+    def _get_match_result_str(self):
+        self._status.sort(key=lambda s: s["name"])
+        out = str()
+        out += "[ name ] -> [ black (W/D/L) ] [ white (W/D/L) ]"
+        for s in self._status:
+            name = s["name"]
+            b_wdl = s["black-WDL"]
+            w_wdl = s["white-WDL"]
+            out += "\n{} -> ({}/{}/{}) ({}/{}/{})".format(
+                       name, b_wdl[0], b_wdl[1], b_wdl[2], w_wdl[0], w_wdl[1], w_wdl[2])
+        return out
 
     def play_game(self):
         black, white = self._sample_engines()
@@ -246,6 +255,7 @@ class MatchTool:
             white["white-WDL"][1] += 1
 
         self._status.extend([black, white])
+        self._save_match_result()
 
     def shutdown(self):
         while len(self._status) > 0:
