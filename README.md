@@ -9,19 +9,19 @@ In recent years, the computer Go engine is significantly stronger than before. T
 First we need a judge engine, such as GNU Go. We do not implement any rule for this tool. The judge engine helps us to judge the legal move and compute the final score. For Ubuntu user, you can download it via apt packet.
 
 ```
-    sudo apt install gnugo
+$sudo apt install gnugo
 ```
 
 Then set up the configure for each engine. Fill the following data for each item.
 
 * ```name```: The engine name.
-* ```command```: command to run the engine.
+* ```command```: Command to run the engine.
 * ```type```: One of ```player``` or ```judge```.
 
 Now you can start the match.
 
 ```
-    python3 match_tool.py -e engine.json -g 100
+$python3 match_tool.py -e engine.json -g 100
 ```
 
 All options
