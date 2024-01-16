@@ -9,13 +9,20 @@
     {
         "name" : "GNU Go Lv10",
         "command" : "gnugo --mode gtp --level 10 --chinese-rules",
-        "type" : "player",
+        "type" : "fixed",
         "elo" : 1800
     },
 
     {
         "name" : "GNU Go Lv8",
         "command" : "gnugo --mode gtp --level 8 --chinese-rules",
+        "type" : "player",
+        "elo" : 1800
+    },
+
+    {
+        "name" : "GNU Go Lv0",
+        "command" : "gnugo --mode gtp --level 0 --chinese-rules",
         "type" : "player",
         "elo" : 1800
     }

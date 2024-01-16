@@ -6,6 +6,7 @@ import glob, os
 from datetime import datetime
 from gtp import GtpVertex, GtpColor, GtpEngine
 from sgf_loader import SgfLoader
+from elo import Elo
 
 class JudgeGtpEngine(GtpEngine):
     EXTENDED_SUPPORTED_LIST = [
@@ -54,14 +55,19 @@ class MatchTool:
                 e.raise_err = True
                 e.protocol_version()
                 existed_names.append(s["name"])
+
+                k = 16.
+                if s["type"] == "fixed":
+                    k = 0.
                 self._status.append(
                     {
                         "name"      : s["name"],
                         "command"   : s["command"],
-                        "elo"       : s["elo"],
+                        "elo"       : Elo(s["elo"], k),
                         "engine"    : e,
                         "black-WDL" : [0, 0, 0],
-                        "white-WDL" : [0, 0, 0]
+                        "white-WDL" : [0, 0, 0],
+                        "games"     : 0
                     }
                 )
                 print("Setup the GTP engine, {}.".format(s["name"]))
@@ -90,16 +96,16 @@ class MatchTool:
     def show_match_result(self):
         print(self._get_match_result_str())
 
-    def _roulette(self, prob):
-        r = random.random()
-        return r < prob
-
     def _init_engines(self, black, white, judge):
+        def roulette(self, prob):
+            r = random.random()
+            return r < prob
+
         random.shuffle(self.sgf_files)
         loader = None
         history = list()
         curr_color = GtpColor(GtpColor.BLACK)
-        while len(self.sgf_files) > 0 and self._roulette(self.sample_rate):
+        while len(self.sgf_files) > 0 and roulette(self.sample_rate):
             try:
                 loader = SgfLoader(self.sgf_files[0])
                 if loader.board_size != self.board_size:
@@ -160,22 +166,72 @@ class MatchTool:
             f.write(res)
 
     def _sample_engines(self):
-        random.shuffle(self._status)
-        black = self._status.pop(0)
-        white = self._status.pop(0)
+        def random_select_by_elo(status, key_fn):
+            status.sort(key=lambda s: s["elo"].get())
+            support_list = list()
+            mid_elo = p1["elo"].get()
+            accm = 0
+
+            for s in status:
+                diff = max(abs(mid_elo - s["elo"].get()), 0.1)
+                accm += key_fn(diff)
+            select = random.random() * accm
+
+            accm = 0
+            for idx, s in enumerate(status):
+                diff = max(abs(mid_elo - s["elo"].get()), 0.1)
+                accm += key_fn(diff)
+                if accm > select:
+                    return idx
+            return -1
+
+        self._status.sort(key=lambda s: s["elo"].get())
+        elo_range = self._status[-1]["elo"].get() - self._status[0]["elo"].get()
+
+        self._status.sort(key=lambda s: s["games"])
+        p1 = self._status.pop(0)
+        idx = random_select_by_elo(
+                  self._status,
+                  lambda v: pow(max(min(elo_range/v, 1000.0), 1.0), 0.75)
+              )
+        p2 = self._status.pop(idx)
+
+        shuflist = [p1, p2]
+        random.shuffle(shuflist)
+        black = shuflist[0]
+        white = shuflist[1]
         return black, white
 
     def _get_match_result_str(self):
-        self._status.sort(key=lambda s: s["name"])
+        self._status.sort(key=lambda s: s["elo"].get())
         out = str()
-        out += "[ name ] -> [ black (W/D/L) ] [ white (W/D/L) ]"
+        out += "[ name ] : [ Elo ] -> [ black (W/D/L) ] [ white (W/D/L) ]"
         for s in self._status:
             name = s["name"]
+            elo = s["elo"]
             b_wdl = s["black-WDL"]
             w_wdl = s["white-WDL"]
-            out += "\n{} -> ({}/{}/{}) ({}/{}/{})".format(
-                       name, b_wdl[0], b_wdl[1], b_wdl[2], w_wdl[0], w_wdl[1], w_wdl[2])
+            out += "\n{} : {} -> ({}/{}/{}) ({}/{}/{})".format(
+                       name, elo, b_wdl[0], b_wdl[1], b_wdl[2], w_wdl[0], w_wdl[1], w_wdl[2])
         return out
+
+    def _update_status(self, winner, loser, black, white):
+        # TODO: We need to update the K factor.
+        if winner is not None:
+            if winner["name"] == black["name"]:
+                winner["black-WDL"][0] += 1
+                loser["white-WDL"][2] += 1
+            else:
+                winner["white-WDL"][0] += 1
+                loser["black-WDL"][2] += 1
+            winner["elo"].beat(loser["elo"])
+        else:
+            black["black-WDL"][1] += 1
+            white["white-WDL"][1] += 1
+            black["elo"].draw(white["elo"])
+
+        for p in [black, white]:
+            p["games"] += 1
 
     def play_game(self):
         black, white = self._sample_engines()
@@ -242,18 +298,7 @@ class MatchTool:
             e.protocol_version() # interrupt ponder
 
         self._save_sgf(black, white, history, result)
-
-        if winner is not None:
-            if winner["name"] == black["name"]:
-                winner["black-WDL"][0] += 1
-                loser["white-WDL"][2] += 1
-            else:
-                winner["white-WDL"][0] += 1
-                loser["black-WDL"][2] += 1
-        else:
-            black["black-WDL"][1] += 1
-            white["white-WDL"][1] += 1
-
+        self._update_status(winner, loser, black, white)
         self._status.extend([black, white])
         self._save_match_result()
 
