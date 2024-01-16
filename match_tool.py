@@ -3,6 +3,7 @@ import random
 import json
 import hashlib
 import glob, os
+import math
 from datetime import datetime
 from gtp import GtpVertex, GtpColor, GtpEngine
 from sgf_loader import SgfLoader
@@ -31,6 +32,39 @@ class JudgeGtpEngine(GtpEngine):
         self.send_command("is_legal {} {}".format(color, vertex))
         return self.return_response()
 
+    def quit_and_shutdown(self):
+        self.quit()
+        self.shutdown()
+
+class LazyGtpEngine(GtpEngine):
+    def __init__(self, command):
+        super().__init__(command)
+        self._ready = True
+
+    def wakeup(self):
+        if self._ready:
+            return
+        self.setup()
+        self._ready = True
+
+    def sleep(self):
+        if not self._ready:
+            return
+        self.quit()
+        self.shutdown()
+        self._ready = False
+
+    def quit_and_shutdown(self):
+        self.sleep()
+
+class DefaultGtpEngine(GtpEngine):
+    def __init__(self, command):
+        super().__init__(command)
+
+    def quit_and_shutdown(self):
+        self.quit()
+        self.shutdown()
+
 class MatchTool:
     def __init__(self, args):
         existed_names = list()
@@ -42,7 +76,10 @@ class MatchTool:
 
         for s in setting:
             try:
-                if s["type"] == "judge":
+                engine_types = s["type"].split('-')
+                if "skip" in engine_types:
+                    continue
+                if "judge" in engine_types:
                     self._judge_gtp = JudgeGtpEngine(s["command"])
                     print("Setup the GTP engine, {}, as judge.".format(s["name"]))
                     continue
@@ -51,14 +88,17 @@ class MatchTool:
                     sha = hashlib.sha256()
                     sha.update(s["name"].encode())
                     s["name"] = "{}-{}".format(ori_name, sha.hexdigest()[:6])
-                e = GtpEngine(s["command"])
+                k = 40.
+                if "fixed" in engine_types:
+                    k = 0.
+                if "lazy" in engine_types:
+                    e = LazyGtpEngine(s["command"])
+                else:
+                    e = DefaultGtpEngine(s["command"])
                 e.raise_err = True
                 e.protocol_version()
                 existed_names.append(s["name"])
 
-                k = 16.
-                if s["type"] == "fixed":
-                    k = 0.
                 self._status.append(
                     {
                         "name"      : s["name"],
@@ -71,6 +111,8 @@ class MatchTool:
                     }
                 )
                 print("Setup the GTP engine, {}.".format(s["name"]))
+                if type(e) == LazyGtpEngine:
+                    e.sleep()
             except Exception as err:
                 print(err)
 
@@ -85,6 +127,7 @@ class MatchTool:
         self.sample_rate = args.sample_rate
         self.sgf_files = list()
         self.save_dir = args.save_dir
+        self.k_decay_factor = max(args.k_decay_factor, 1.)
 
         if args.sgf_dir is not None:
             self.sgf_files.extend(glob.glob(os.path.join(args.sgf_dir, "*.sgf")))
@@ -100,6 +143,10 @@ class MatchTool:
         def roulette(self, prob):
             r = random.random()
             return r < prob
+
+        for e in [black, white]:
+            if type(e) == LazyGtpEngine:
+                e.wakeup();
 
         random.shuffle(self.sgf_files)
         loader = None
@@ -168,31 +215,27 @@ class MatchTool:
     def _sample_engines(self):
         def random_select_by_elo(status, key_fn):
             status.sort(key=lambda s: s["elo"].get())
-            support_list = list()
-            mid_elo = p1["elo"].get()
+            curr_elo = p1["elo"].get()
             accm = 0
 
             for s in status:
-                diff = max(abs(mid_elo - s["elo"].get()), 0.1)
+                diff = abs(curr_elo - s["elo"].get())
                 accm += key_fn(diff)
             select = random.random() * accm
 
             accm = 0
             for idx, s in enumerate(status):
-                diff = max(abs(mid_elo - s["elo"].get()), 0.1)
+                diff = abs(curr_elo - s["elo"].get())
                 accm += key_fn(diff)
                 if accm > select:
                     return idx
             return -1
 
-        self._status.sort(key=lambda s: s["elo"].get())
-        elo_range = self._status[-1]["elo"].get() - self._status[0]["elo"].get()
-
         self._status.sort(key=lambda s: s["games"])
         p1 = self._status.pop(0)
         idx = random_select_by_elo(
                   self._status,
-                  lambda v: pow(max(min(elo_range/v, 1000.0), 1.0), 0.75)
+                  lambda v: 1.0 / (1.0 + pow(10.0, v / 100.0))
               )
         p2 = self._status.pop(idx)
 
@@ -203,7 +246,7 @@ class MatchTool:
         return black, white
 
     def _get_match_result_str(self):
-        self._status.sort(key=lambda s: s["elo"].get())
+        self._status.sort(key=lambda s: s["elo"].get(), reverse=True)
         out = str()
         out += "[ name ] : [ Elo ] -> [ black (W/D/L) ] [ white (W/D/L) ]"
         for s in self._status:
@@ -215,8 +258,7 @@ class MatchTool:
                        name, elo, b_wdl[0], b_wdl[1], b_wdl[2], w_wdl[0], w_wdl[1], w_wdl[2])
         return out
 
-    def _update_status(self, winner, loser, black, white):
-        # TODO: We need to update the K factor.
+    def _finish_and_update(self, winner, loser, black, white):
         if winner is not None:
             if winner["name"] == black["name"]:
                 winner["black-WDL"][0] += 1
@@ -232,6 +274,14 @@ class MatchTool:
 
         for p in [black, white]:
             p["games"] += 1
+            k = p["elo"].get_k()
+            if k != 0.:
+                k_lambda = 0.69314718056/self.k_decay_factor
+                k = k * math.exp(-k_lambda)
+                k = max(k, 8)
+                p["elo"].set_k(k)
+            if type(p["engine"]) == LazyGtpEngine:
+                p["engine"].sleep()
 
     def play_game(self):
         black, white = self._sample_engines()
@@ -264,7 +314,7 @@ class MatchTool:
 
             rep = judge.is_legal(str(c), str(vtx))
             # 0 is illegal
-            # 1 is legal 
+            # 1 is legal
             if int(rep) == 0:
                 winner, loser = players[str(c.next())], players[str(c)]
                 result = "{}+Illegal".format(str(c.next()).upper()[:1])
@@ -298,22 +348,19 @@ class MatchTool:
             e.protocol_version() # interrupt ponder
 
         self._save_sgf(black, white, history, result)
-        self._update_status(winner, loser, black, white)
+        self._finish_and_update(winner, loser, black, white)
         self._status.extend([black, white])
         self._save_match_result()
 
     def shutdown(self):
         while len(self._status) > 0:
             s = self._status.pop(0)
-            e = s["engine"]
-            e.quit()
-            e.shutdown()
+            e = s["engine"].quit_and_shutdown()
             print("Quit the GTP engine: {}.".format(s["name"]))
-
-        judge = self._judge_gtp
-        judge.quit()
-        judge.shutdown()
-        print("Quit the judge engine.")
+        if self._judge_gtp is not None:
+            self._judge_gtp.quit_and_shutdown()
+            self._judge_gtp = None
+            print("Quit the judge engine.")
 
     def __del__(self):
         self.shutdown()
@@ -355,8 +402,14 @@ if __name__ == '__main__':
                         metavar="<int>",
                         default=0,
                         help="The number of played games.")
+    parser.add_argument("--k-decay-factor",
+                        type=float,
+                        metavar="<float>",
+                        default=25,
+                        help="Halve the K factor after playing factor games.")
+
     args = parser.parse_args()
-    
+
     if args.engines is None:
         print("Please give the engines json file.")
         exit()
@@ -368,5 +421,6 @@ if __name__ == '__main__':
             print("Played {} games.".format(g+1))
             m.show_match_result()
             print("")
-    m.show_match_result()
+    if (g+1) % 10 != 0:
+        m.show_match_result()
     m.shutdown()

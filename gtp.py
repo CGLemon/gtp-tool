@@ -147,7 +147,7 @@ class Query:
     def __init__(self, gtp_command, query_type=NORMAL):
         self.type = query_type
         self.gtp_command = gtp_command
-        self.result = None # = pr ? 
+        self.result = None # = or ?
         self.response = list()
 
     def get_response(self):
@@ -403,12 +403,19 @@ class GtpEngineBase:
     def get_last_query(self):
         return self._pipe.try_get_query(block=True)
 
+    def setup(self):
+        if self._pipe is None:
+            self._pipe = GTPEnginePipe(self.command)
+
     def shutdown(self):
+        if self._pipe is None:
+            return
         if self._pipe.alive():
             sys.stderr.write("Kill the GTP engine process. It is not the recommend way. Please enter \"quit\" before closing it.\n")
             self._pipe.kill()
             self._pipe.wait()
         self._pipe.wait_to_join()
+        self._pipe = None
 
 class GtpEngine(GtpEngineBase):
     SUPPORTED_LIST = [
@@ -485,7 +492,7 @@ class GtpEngine(GtpEngineBase):
 
     def quit(self):
         self.send_command("quit")
-        self.idle(0.1) # Wait for handling the quit command.
+        self.idle(0.2) # Wait for handling the quit command.
 
     def genmove(self, color):
         self.send_command("genmove {}".format(color))

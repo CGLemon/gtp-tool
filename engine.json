@@ -23,8 +23,7 @@
     {
         "name" : "GNU Go Lv0",
         "command" : "gnugo --mode gtp --level 0 --chinese-rules",
-        "type" : "player",
+        "type" : "lazy",
         "elo" : 1800
     }
-
 ]
