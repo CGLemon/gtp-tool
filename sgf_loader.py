@@ -4,6 +4,8 @@ import random
 class SgfLoader:
     def __init__(self, filename):
         self.history = list()
+        self.black_player = str()
+        self.white_player = str()
         self.board_size = None
         self.komi = None
         self._load(filename)
@@ -25,8 +27,12 @@ class SgfLoader:
             self.history.append((GtpColor(GtpColor.BLACK), as_gtp_move(val)))
         elif key == "W":
             self.history.append((GtpColor(GtpColor.WHITE), as_gtp_move(val)))
+        elif key == "PB":
+            self.black_player = val
+        elif key == "PW":
+            self.white_player = val
         elif key == "AB" or key == "AW":
-            raise Exception("Do not support for AB/Aw tag in the SGF file.")
+            raise Exception("Do not support for AB/AW tag in the SGF file.")
 
     def _load(self, filename):
         try:

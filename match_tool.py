@@ -128,6 +128,7 @@ class MatchTool:
         self.sgf_files = list()
         self.save_dir = args.save_dir
         self.k_decay_factor = max(args.k_decay_factor, 1.)
+        self.start_time = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
 
         if args.sgf_dir is not None:
             self.sgf_files.extend(glob.glob(os.path.join(args.sgf_dir, "*.sgf")))
@@ -179,8 +180,7 @@ class MatchTool:
         return history, curr_color
 
     def _save_sgf(self, black, white, history, result):
-        now = datetime.now()
-        curr_time = now.strftime("%Y-%m-%d-%H:%M:%S")
+        curr_time = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
         sgf = "(;GM[1]FF[4]SZ[{}]KM[{}]RU[unknown]PB[{}]PW[{}]DT[{}]".format(
                   self.board_size, self.komi, black["name"], white["name"], curr_time)
         if result is not None:
@@ -209,7 +209,8 @@ class MatchTool:
 
     def _save_match_result(self):
         res = self._get_match_result_str()
-        with open(os.path.join(self.save_dir, "result.txt"), "w") as f:
+        filename = "result-{}.txt".format(self.start_time)
+        with open(os.path.join(self.save_dir, filename), "w") as f:
             f.write(res)
 
     def _sample_engines(self):
@@ -277,11 +278,14 @@ class MatchTool:
             k = p["elo"].get_k()
             if k != 0.:
                 k_lambda = 0.69314718056/self.k_decay_factor
+                if k < 16:
+                    k_lambda /= 2.
                 k = k * math.exp(-k_lambda)
-                k = max(k, 8)
+                k = max(k, 5)
                 p["elo"].set_k(k)
             if type(p["engine"]) == LazyGtpEngine:
                 p["engine"].sleep()
+        self._status.extend([black, white])
 
     def play_game(self):
         black, white = self._sample_engines()
@@ -349,7 +353,6 @@ class MatchTool:
 
         self._save_sgf(black, white, history, result)
         self._finish_and_update(winner, loser, black, white)
-        self._status.extend([black, white])
         self._save_match_result()
 
     def shutdown(self):
