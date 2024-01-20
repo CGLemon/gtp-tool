@@ -17,16 +17,16 @@ Then set up the configure for each engine. Fill the following data for each item
 * ```name```: The engine name.
 * ```command```: Command to run the engine.
 * ```type```: The engine type labels. Yon can connect two labels by dash, e.g. ```fixed-lazy```.
-    * ```judge```: The game judge. This engine must support ```final_score``` and ```is_legal``` command.
+    * ```judge```: The game judge. The engine must support ```final_score``` and ```is_legal``` command.
     * ```player```: Normal player.
-    * ```fixed```: Fix the Elo rating.
+    * ```fixed```: Fix the Elo rating. Only support one fixed Elo engine.
     * ```lazy```: Will load engine when starting the game. Release engine after finishing game.
 * ```elo```: The initial Elo rating.
 
 Now you can start the match.
 
 ```
-$python3 match_tool.py -e engine.json --num-games 100 --boardsize 19 --komi 7.5 --save-dir match
+$python3 match_tool.py -e engine.json --boardsize 9 --komi 7.0 --save-dir match
 ```
 
 In addition, you may use the sample SGF directory ```19x19``` or generate the opening by [Sayuri](https://github.com/CGLemon/Sayuri) engine. Enter the GTP command ```genopenings <dir> <num games>```.

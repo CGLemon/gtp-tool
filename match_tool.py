@@ -4,6 +4,7 @@ import json
 import hashlib
 import glob, os
 import math
+import select, sys
 from datetime import datetime
 from gtp import GtpVertex, GtpColor, GtpEngine
 from sgf_loader import SgfLoader
@@ -70,6 +71,8 @@ class MatchTool:
         existed_names = list()
         self._status = list()
         self._judge_gtp = None
+        self._fixed_elo = None
+        self._fixed_name = None
 
         with open(args.engines, "r") as f:
             setting = json.load(f)
@@ -88,9 +91,12 @@ class MatchTool:
                     sha = hashlib.sha256()
                     sha.update(s["name"].encode())
                     s["name"] = "{}-{}".format(ori_name, sha.hexdigest()[:6])
-                k = 40.
                 if "fixed" in engine_types:
-                    k = 0.
+                    if self._fixed_name is None:
+                        self._fixed_name = s["name"]
+                        self._fixed_elo = s["elo"]
+                    else:
+                        print("Only accept one fixed Elo engine. Please remove redundant fixed label.")
                 if "lazy" in engine_types:
                     e = LazyGtpEngine(s["command"])
                 else:
@@ -103,7 +109,7 @@ class MatchTool:
                     {
                         "name"      : s["name"],
                         "command"   : s["command"],
-                        "elo"       : Elo(s["elo"], k),
+                        "elo"       : Elo(s["elo"], 40.),
                         "engine"    : e,
                         "black-WDL" : [0, 0, 0],
                         "white-WDL" : [0, 0, 0],
@@ -122,9 +128,10 @@ class MatchTool:
         if self._judge_gtp is None:
             self.shutdown()
             raise Exception("Need to setup judge engine.")
+        self.played_games = 0
         self.board_size = args.boardsize
         self.komi = args.komi
-        self.sample_rate = args.sample_rate
+        self.sample_rate = min(max(args.sample_rate, 0.0), 1.0)
         self.sgf_files = list()
         self.save_dir = args.save_dir
         self.k_decay_factor = max(args.k_decay_factor, 1.)
@@ -135,9 +142,22 @@ class MatchTool:
         if self.save_dir is not None:
             path = self.save_dir
             if not os.path.isdir(path):
-                os.makedirs(path)
+                os.makedirs(path)    
 
-    def show_match_result(self):
+        info = str()
+        info += "Board Size: {}\n".format(self.board_size)
+        info += "Komi: {}\n".format(self.komi)
+        if args.sgf_dir is not None and self.sample_rate > 0:
+            info += "Load the SGF files from {}.\n".format(
+                        args.sgf_dir)
+        if self.save_dir is not None:
+            info += "Save the SGF files to {}.\n".format(
+                        self.save_dir)
+            info += "Save the current result to {}.\n".format(
+                        self._get_result_txt_name())
+        print(info, end="")
+
+    def print_match_result(self):
         print(self._get_match_result_str())
 
     def _init_engines(self, black, white, judge):
@@ -207,10 +227,13 @@ class MatchTool:
             with open(sgf_path, "w") as f:
                 f.write(sgf)
 
+    def _get_result_txt_name(self):
+        filename = "result-{}.txt".format(self.start_time)
+        return os.path.join(self.save_dir, filename)
+
     def _save_match_result(self):
         res = self._get_match_result_str()
-        filename = "result-{}.txt".format(self.start_time)
-        with open(os.path.join(self.save_dir, filename), "w") as f:
+        with open(self._get_result_txt_name(), "w") as f:
             f.write(res)
 
     def _sample_engines(self):
@@ -286,6 +309,16 @@ class MatchTool:
             if type(p["engine"]) == LazyGtpEngine:
                 p["engine"].sleep()
         self._status.extend([black, white])
+        self.played_games += 1
+
+        if self._fixed_name is not None:
+            offset_elo = 0
+            self._status 
+            for s in self._status:
+               if s["name"] == self._fixed_name:
+                   offset_elo = self._fixed_elo - s["elo"].get()
+            for s in self._status:
+                s["elo"].set(s["elo"].get() + offset_elo)
 
     def play_game(self):
         black, white = self._sample_engines()
@@ -368,6 +401,31 @@ class MatchTool:
     def __del__(self):
         self.shutdown()
 
+def match_loop():
+    info = str()
+    info += "Start the match loop...\n"
+    info += "Please enter the following commands to control the loop,\n"
+    info += "\tquit: stop the match loop\n"
+    info += "\tshow: print the current result\n"
+    print(info, end="")
+
+    m = MatchTool(args)
+    while True:
+        rlist, _, _ = select.select([sys.stdin], [], [], 0)
+        if rlist:
+            line = sys.stdin.readline().strip()
+            if line == "stop":
+                break
+            elif line == "show":
+                m.print_match_result()
+            else:
+                print("Unknown command.")
+        m.play_game()
+        if m.played_games % 100 == 0:
+            print("Played {} games.".format(m.played_games))
+    m.shutdown()
+    print("Finished...")
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--engines",
@@ -400,30 +458,14 @@ if __name__ == '__main__':
                         metavar="<float>",
                         default=7.5,
                         help="Play the match games with this komi.")
-    parser.add_argument("-g", "--num-games",
-                        type=int,
-                        metavar="<int>",
-                        default=0,
-                        help="The number of played games.")
     parser.add_argument("--k-decay-factor",
                         type=float,
                         metavar="<float>",
                         default=25,
                         help="Halve the K factor after playing factor games.")
-
     args = parser.parse_args()
 
     if args.engines is None:
         print("Please give the engines json file.")
         exit()
-
-    m = MatchTool(args)
-    for g in range(args.num_games):
-        m.play_game()
-        if (g+1) % 10 == 0:
-            print("Played {} games.".format(g+1))
-            m.show_match_result()
-            print("")
-    if (g+1) % 10 != 0:
-        m.show_match_result()
-    m.shutdown()
+    match_loop()
