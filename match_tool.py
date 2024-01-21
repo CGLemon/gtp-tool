@@ -70,6 +70,7 @@ class MatchTool:
     def __init__(self, args):
         existed_names = list()
         self._status = list()
+        self._game_history = list()
         self._judge_gtp = None
         self._fixed_elo = None
         self._fixed_name = None
@@ -87,16 +88,18 @@ class MatchTool:
                     print("Setup the GTP engine, {}, as judge.".format(s["name"]))
                     continue
                 ori_name = s["name"]
-                while s["name"] in existed_names:
-                    sha = hashlib.sha256()
-                    sha.update(s["name"].encode())
-                    s["name"] = "{}-{}".format(ori_name, sha.hexdigest()[:6])
+                if s["name"] in existed_names:
+                    # sha = hashlib.sha256()
+                    # sha.update(s["name"].encode())
+                    # s["name"] = "{}-{}".format(ori_name, sha.hexdigest()[:6])
+                    print("Only accept individual engine name. We quit {}.".format(s["name"]))
+                    continue
                 if "fixed" in engine_types:
                     if self._fixed_name is None:
                         self._fixed_name = s["name"]
                         self._fixed_elo = s["elo"]
                     else:
-                        print("Only accept one fixed Elo engine. Please remove redundant fixed label.")
+                        print("Only accept one fixed Elo engine. Please remove redundant \"fixed\" label.")
                 if "lazy" in engine_types:
                     e = LazyGtpEngine(s["command"])
                 else:
@@ -290,17 +293,21 @@ class MatchTool:
         return out
 
     def _finish_and_update(self, winner, loser, black, white):
+        result = str()
         if winner is not None:
             if winner["name"] == black["name"]:
                 winner["black-WDL"][0] += 1
                 loser["white-WDL"][2] += 1
+                result = "black won"
             else:
                 winner["white-WDL"][0] += 1
                 loser["black-WDL"][2] += 1
+                result = "white won"
             winner["elo"].beat(loser["elo"])
         else:
             black["black-WDL"][1] += 1
             white["white-WDL"][1] += 1
+            result = "draw"
             black["elo"].draw(white["elo"])
 
         for p in [black, white]:
@@ -326,6 +333,15 @@ class MatchTool:
                    offset_elo = self._fixed_elo - s["elo"].get()
             for s in self._status:
                 s["elo"].set(s["elo"].get() + offset_elo)
+
+        self._game_history.append(
+            {
+                "id" : self.played_games,
+                "black" : black["name"],
+                "white" : white["name"],
+                "result" : result
+            }
+        )
 
     def play_game(self):
         black, white = self._sample_engines()
