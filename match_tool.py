@@ -129,6 +129,7 @@ class MatchTool:
             self.shutdown()
             raise Exception("Need to setup judge engine.")
         self.played_games = 0
+        self.max_games = args.max_games
         self.board_size = args.boardsize
         self.komi = args.komi
         self.sample_rate = min(max(args.sample_rate, 0.0), 1.0)
@@ -158,7 +159,13 @@ class MatchTool:
         print(info, end="")
 
     def print_match_result(self):
+        print("Played {} games.".format(self.played_games))
         print(self._get_match_result_str())
+
+    def is_running(self):
+        if self.max_games is None:
+            return True
+        return self.max_games > self.played_games
 
     def _init_engines(self, black, white, judge):
         def roulette(self, prob):
@@ -401,7 +408,7 @@ class MatchTool:
     def __del__(self):
         self.shutdown()
 
-def match_loop():
+def match_loop(args):
     info = str()
     info += "Start the match loop...\n"
     info += "Please enter the following commands to control the loop,\n"
@@ -410,11 +417,11 @@ def match_loop():
     print(info, end="")
 
     m = MatchTool(args)
-    while True:
+    while m.is_running():
         rlist, _, _ = select.select([sys.stdin], [], [], 0)
         if rlist:
             line = sys.stdin.readline().strip()
-            if line == "stop":
+            if line in ["stop", "quit"]:
                 break
             elif line == "show":
                 m.print_match_result()
@@ -423,6 +430,8 @@ def match_loop():
         m.play_game()
         if m.played_games % 100 == 0:
             print("Played {} games.".format(m.played_games))
+
+    m.print_match_result()
     m.shutdown()
     print("Finished...")
 
@@ -458,6 +467,11 @@ if __name__ == '__main__':
                         metavar="<float>",
                         default=7.5,
                         help="Play the match games with this komi.")
+    parser.add_argument("--max-games",
+                        type=int,
+                        metavar="<int>",
+                        default=None,
+                        help="Stop the loop after playing this number of games.")
     parser.add_argument("--k-decay-factor",
                         type=float,
                         metavar="<float>",
@@ -468,4 +482,4 @@ if __name__ == '__main__':
     if args.engines is None:
         print("Please give the engines json file.")
         exit()
-    match_loop()
+    match_loop(args)
