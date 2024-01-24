@@ -171,7 +171,7 @@ class MatchTool:
         return self.max_games > self.played_games
 
     def _init_engines(self, black, white, judge):
-        def roulette(self, prob):
+        def roulette(prob):
             r = random.random()
             return r < prob
 
