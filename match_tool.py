@@ -6,9 +6,9 @@ import glob, os
 import math
 import select, sys
 from datetime import datetime
-from gtp import GtpVertex, GtpColor, GtpEngine
-from sgf_loader import SgfLoader
-from elo import Elo
+from core.gtp import GtpVertex, GtpColor, GtpEngine
+from core.sgf_loader import SgfLoader
+from core.elo import Elo
 
 class JudgeGtpEngine(GtpEngine):
     EXTENDED_SUPPORTED_LIST = [
@@ -242,9 +242,10 @@ class MatchTool:
         return os.path.join(self.save_dir, filename)
 
     def _save_match_result(self):
-        res = self._get_match_result_str()
-        with open(self._get_result_txt_name(), "w") as f:
-            f.write(res)
+        if self.save_dir:
+            res = self._get_match_result_str()
+            with open(self._get_result_txt_name(), "w") as f:
+                f.write(res)
 
     def _sample_engines(self):
         def random_select_by_elo(status, key_fn):

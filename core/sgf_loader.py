@@ -1,4 +1,4 @@
-from gtp import GtpVertex, GtpColor
+from .gtp import GtpVertex, GtpColor
 import random
 
 class SgfLoader:
