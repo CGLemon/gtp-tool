@@ -1,6 +1,6 @@
 import tkinter as tk
 from functools import partial
-from core.game import Stone
+from .game import Stone
 
 class GoLikeBoardUilts:
 
@@ -102,13 +102,19 @@ class GoLikeBoard(BoardCanvas):
             bg="#CD853F")
         self.canvas.place(x=0, y=0)
 
+    def _transfer_coord(self, pos):
+        lower = self.grid_size / 2
+        x, y = pos
+        x = round((x - lower)/self.grid_size)
+        y = round((y - lower)/self.grid_size)
+        return x, self.board_size-y-1
+
     def bind_wrapper(self, func):
-        def transfer_coord(board_size, grid_size, event):
-            lower = grid_size / 2
-            x = round((event.x - lower)/grid_size)
-            y = round((event.y - lower)/grid_size)
-            func(x, board_size-y-1)
-        self.canvas.bind("<Button-1>", partial(transfer_coord, self.board_size, self.grid_size))
+        def func_wrapper(transfer, event):
+            x, y = event.x, event.y
+            x, y = transfer((x,y))
+            return func(x, y)
+        self.canvas.bind("<Button-1>", partial(func_wrapper, self._transfer_coord))
 
     def sync(self, game):
         def is_star(x, y, size):
@@ -179,13 +185,19 @@ class OthelloLikeBoard(BoardCanvas):
             bg="green")
         self.canvas.place(x=0, y=0)
 
+    def _transfer_coord(self, pos):
+        lower = 0.0
+        x, y = pos
+        x = int((x - lower)/self.grid_size)
+        y = int((y - lower)/self.grid_size)
+        return x, y
+
     def bind_wrapper(self, func):
-        def transfer_coord(grid_size, event):
-            lower = 0.0
-            x = int((event.x - lower)/grid_size)
-            y = int((event.y - lower)/grid_size)
-            func(x, y)
-        self.canvas.bind("<Button-1>", partial(transfer_coord, self.grid_size))
+        def func_wrapper(transfer, event):
+            x, y = event.x, event.y
+            x, y = transfer((x,y))
+            return func(x, y)
+        self.canvas.bind("<Button-1>", partial(func_wrapper, self._transfer_coord))
 
     def sync(self, game):
         for y in range(self.board_size):
