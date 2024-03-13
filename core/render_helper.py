@@ -57,6 +57,17 @@ class GoLikeBoardUilts:
         yy = lower + y * grid_size
         canvas.create_oval(
             xx-radius, yy-radius, xx+radius, yy+radius,
+            fill="blue", outline="blue", width=border)
+
+    @staticmethod
+    def draw_lastmove(canvas, grid_size, x, y):
+        radius = max(grid_size/10 - 2, 4)
+        border = 0
+        lower = grid_size / 2
+        xx = lower + x * grid_size
+        yy = lower + y * grid_size
+        canvas.create_oval(
+            xx-radius, yy-radius, xx+radius, yy+radius,
             fill="red", outline="red", width=border)
 
 class BoardCanvas:
@@ -101,13 +112,14 @@ class GoLikeBoard(BoardCanvas):
             height=self.board_size * self.grid_size,
             bg="#CD853F")
         self.canvas.place(x=0, y=0)
+        self.last_move = None
 
     def _transfer_coord(self, pos):
         lower = self.grid_size / 2
         x, y = pos
         x = round((x - lower)/self.grid_size)
         y = round((y - lower)/self.grid_size)
-        return x, self.board_size-y-1
+        return x, y
 
     def bind_wrapper(self, func):
         def func_wrapper(transfer, event):
@@ -145,6 +157,7 @@ class GoLikeBoard(BoardCanvas):
                 self.hintbuf[idx] = BoardCanvas.NOHINT
                 if is_star(x, y, self.board_size):
                     self.hintbuf[idx] = BoardCanvas.STAR
+        self.last_move = game.last_move
 
     def render(self):
         self.canvas.delete("all")
@@ -160,10 +173,11 @@ class GoLikeBoard(BoardCanvas):
         whiteoval = partial(GoLikeBoardUilts.draw_white, self.canvas, self.grid_size)
         staroval = partial(GoLikeBoardUilts.draw_star, self.canvas, self.grid_size)
         illegaloval = partial(GoLikeBoardUilts.draw_illegal, self.canvas, self.grid_size)
+        lastmoveloval = partial(GoLikeBoardUilts.draw_lastmove, self.canvas, self.grid_size)
 
         for y in range(self.board_size):
             for x in range(self.board_size):
-                idx = x + (self.board_size-y-1) * self.board_size
+                idx = x + y * self.board_size
                 color = self.boardbuf[idx]
                 hint = self.hintbuf[idx]
                 if color == BoardCanvas.BLACK:
@@ -174,6 +188,10 @@ class GoLikeBoard(BoardCanvas):
                     staroval(x, y)
                 if hint == BoardCanvas.ILLEGAL:
                     illegaloval(x, y)
+                if not self.last_move is None:
+                    lx, ly = self.last_move
+                    if lx == x and ly == y:
+                        lastmoveloval(x, y)
 
 class OthelloLikeBoard(BoardCanvas):
     def __init__(self, root, board_size, canvas_size):
@@ -184,6 +202,7 @@ class OthelloLikeBoard(BoardCanvas):
             height=self.board_size * self.grid_size,
             bg="green")
         self.canvas.place(x=0, y=0)
+        self.last_move = None
 
     def _transfer_coord(self, pos):
         lower = 0.0
@@ -207,6 +226,7 @@ class OthelloLikeBoard(BoardCanvas):
                 self.hintbuf[idx] = BoardCanvas.NOHINT
                 if game.legal(x, y, game.tomove):
                     self.hintbuf[idx] = BoardCanvas.LEGAL
+        self.last_move = game.last_move
 
     def render(self):
         self.canvas.delete("all")
@@ -221,11 +241,12 @@ class OthelloLikeBoard(BoardCanvas):
         blackoval = partial(GoLikeBoardUilts.draw_black, self.canvas, self.grid_size)
         whiteoval = partial(GoLikeBoardUilts.draw_white, self.canvas, self.grid_size)
         legaloval = partial(GoLikeBoardUilts.draw_legal, self.canvas, self.grid_size)
+        lastmoveloval = partial(GoLikeBoardUilts.draw_lastmove, self.canvas, self.grid_size)
 
         for y in range(self.board_size):
             for x in range(self.board_size):
                 idx = x + y * self.board_size
-                color = self.boardbuf[x + y * self.board_size]
+                color = self.boardbuf[idx]
                 hint = self.hintbuf[idx]
                 if color == BoardCanvas.BLACK:
                     blackoval(x, y)
@@ -233,6 +254,10 @@ class OthelloLikeBoard(BoardCanvas):
                     whiteoval(x, y)
                 if color == BoardCanvas.EMPTY and hint == BoardCanvas.LEGAL:
                     legaloval(x, y)
+                if not self.last_move is None:
+                    lx, ly = self.last_move
+                    if lx == x and ly == y:
+                        lastmoveloval(x, y)
 
 class HexBoard(BoardCanvas):
     def __init__(self, root, board_size, grid_size):

@@ -6,12 +6,42 @@ import tkinter as tk
 import tkinter.font as font
 from functools import partial
 from core.gtp import GtpVertex, GtpColor, GtpEngine
+from core.game import Stone
+
+import time
+
+class GuiGtpEngine(GtpEngine):
+    def __init__(self, command):
+        super().__init__(command)
+        self.raise_err = True
+
+    def gui_color_to_gtp_color(self, val):
+        if val == Stone.BLACK:
+            return GtpColor(GtpColor.BLACK)
+        if val == Stone.WHITE:
+            return GtpColor(GtpColor.WHITE)
+        return GtpColor(GtpColor.INVLD)
+
+    def play_pass(self, gui_color):
+        color = self.gui_color_to_gtp_color(gui_color)
+        self.play(str(color), str(GtpVertex(GtpVertex.PASS_VERTEX)))
+
+    def play_move(self, gui_color, x, y):
+        color = self.gui_color_to_gtp_color(gui_color)
+        self.play(str(color), str(GtpVertex((x, y))))
+
+    def genmove_and_return(self, gui_color):
+        color = self.gui_color_to_gtp_color(gui_color)
+        return GtpVertex(self.genmove(str(color)))
+
+    def quit_and_shutdown(self):
+        self.quit()
+        self.shutdown()
 
 class Gui():
     def __init__(self, args):
         self.game_type = args.game.lower()
         self.board_size = args.boardsize
-        self._engine = GtpEngine("gnugo --mode gtp")
 
         self.width = 1200
         self.height = 900
@@ -23,8 +53,12 @@ class Gui():
 
         self._frames = list()
         self._init_layout()
+        self._lock = False
+        self._engine = None
+        if not args.command is None:
+            self._engine = GuiGtpEngine(args.command)
+            self._init_engine()
         self._render()
-        self._root.after(0, self.engine_loop)
         self._root.mainloop()
 
     def _setup_game(self, frame, size):
@@ -112,37 +146,107 @@ class Gui():
         self._frames.clear()
 
     def _restart(self):
+        if self._lock:
+            sys.stderr.write("The board is locked.\n")
+            return
         self._destroy()
         self._init_layout()
+        sys.stderr.write("Restart the game.\n")
+        if self.is_engine_valid():
+            self._init_engine()
 
     def _play_pass(self):
+        if self._lock:
+            sys.stderr.write("The board is locked.\n")
+            return
+        self._lock = True
+        query = dict()
         if self._game.pass_legal():
-            self._game.play_pass()
+            query["pass"] = True
         else:
             sys.stderr.write("Pass is not legal move.\n")
+        self._play_move_query(query)
 
     def _play_at(self, x, y):
+        if self._lock:
+            sys.stderr.write("The board is locked.\n")
+            return
+        self._lock = True
+        query = dict()
         self.board_canvas.sync(self._game)
         if self._game.legal(x, y, self._game.tomove):
-            self._game.play(x, y, self._game.tomove)
-            self._render()
+            query["move"] = True
+            query["coordinate"] = (x, y)
         else:
-           self.board_canvas.sethint(x, y, render.BoardCanvas.ILLEGAL)
-           self.board_canvas.render()
-           sys.stderr.write("The {}-{} is not legal move.\n".format(x, y))
+            query["illegal"] = True
+            query["coordinate"] = (x, y)
+        self._play_move_query(query)
+
+    def _play_move_query(self, query):
+        engine_play = False
+        try:
+            tomove = self._game.tomove
+            if query.get("pass", False):
+                self._game.play_pass()
+                sys.stderr.write("Play the pass move.\n")
+                if self.is_engine_valid():
+                    self._engine.play_pass(tomove)
+                    engine_play = True
+            elif query.get("move", False):
+                x, y = query["coordinate"]
+                self._game.play(x, y, self._game.tomove)
+                self.board_canvas.sync(self._game)
+                self.board_canvas.render()
+                sys.stderr.write("Play the move at {}-{}.\n".format(x, y))
+                if self.is_engine_valid():
+                    self._engine.play_move(tomove, x, y)
+                    engine_play = True
+            elif query.get("illegal", False):
+                x, y = query["coordinate"]
+                self.board_canvas.sethint(x, y, render.BoardCanvas.ILLEGAL)
+                self.board_canvas.render()
+                sys.stderr.write("The {}-{} is not legal move.\n".format(x, y))
+        except Exception as err:
+            sys.stderr.write("Engine thinks you play a illegal move.\n")
+
+        if engine_play:
+            self._root.after(10, self._engine_play_and_unlock)
+        else:
+            self._lock = False
+
+    def _engine_play_and_unlock(self):
+        try:
+            # TODO: check the vertex is legal or not
+            vtx = self._engine.genmove_and_return(self._game.tomove)
+            if vtx.is_pass():
+                self._game.play_pass()
+                sys.stderr.write("Engine playes pass move.\n")
+            elif vtx.is_move():
+                x, y = vtx.get()
+                self._game.play(x, y, self._game.tomove)
+                self.board_canvas.sync(self._game)
+                self.board_canvas.render()
+                sys.stderr.write("Engine the move at {}-{}.\n".format(x, y))
+            else:
+                raise Exception("Game is over!")
+        except Exception as err:
+            sys.stderr.write("{}\n".format(err))           
+        self._lock = False
 
     def _render(self):
         self.board_canvas.sync(self._game)
         self.board_canvas.render()
 
-    def engine_loop(self):
-        print("loop")
+    def is_engine_valid(self):
+        return not self._engine is None
 
-        self._root.after(1000, self.engine_loop)
+    def _init_engine(self):
+       self._engine.clear_board()
+       self._engine.boardsize(self.board_size)
 
     def quit(self):
-        self._engine.quit()
-        self._engine.shutdown()
+        if self.is_engine_valid():
+            self._engine.quit_and_shutdown()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -156,7 +260,11 @@ if __name__ == '__main__':
                         metavar="<int>",
                         default=0,
                         help="Select a specific board size.")
+    parser.add_argument("-c", "--command",
+                        type=str,
+                        metavar="<string>",
+                        default=None,
+                        help="The command of GTP engine.")
     args = parser.parse_args()
     gui = Gui(args)
     gui.quit()
-

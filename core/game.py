@@ -32,7 +32,7 @@ class MailBoxGame:
 
         self.mailbox = [ Stone.INVLD ] * self.num_locations
         self.dir1 = [
-            (1,0), (0,1), (-1,0), (0,-1) # for most game
+            (1,0), (0,1), (-1,0), (0,-1) # for most games
         ]
         self.dir2 = [
             (1,1), (1,-1), (-1,1), (-1,-1) # for othello
@@ -84,6 +84,7 @@ class GoLikeGame(MailBoxGame):
         super(GoLikeGame, self).reset()
         self.output_invert_y = True
         self.tomove = Stone.BLACK
+        self.last_move = None
 
     def play(self, x, y, color):
         if not color in Stone.COLORS:
@@ -94,6 +95,7 @@ class GoLikeGame(MailBoxGame):
 
         self.set_stone(x, y, color)
         self.tomove = Stone.invert_color(color)
+        self.last_move = (x, y)
 
     def reset(self):
         super(GoLikeGame, self).reset()
@@ -157,6 +159,7 @@ class GoGame(GoLikeGame):
         if self.pass_legal():
             self.tomove = Stone.invert_color(self.tomove)
             self.num_passes += 1
+            self.last_move = None
 
     def pass_legal(self):
         if self.pass_is_legal:
