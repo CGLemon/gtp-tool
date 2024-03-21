@@ -8,8 +8,6 @@ from functools import partial
 from core.gtp import GtpVertex, GtpColor, GtpEngine
 from core.game import Stone
 
-import time
-
 class GuiGtpEngine(GtpEngine):
     def __init__(self, command):
         super().__init__(command)
@@ -55,7 +53,16 @@ class Gui():
         self._init_layout()
         self._lock = False
         self._engine = None
+        self._engine_color = None
+        if not args.engine_color.lower() in ["black", "white"]:
+            raise Exception("Invalid engine color.")
+        else:
+            if args.engine_color.lower() == "black":
+                self._engine_color = Stone.BLACK
+            elif args.engine_color.lower() == "white":
+                self._engine_color = Stone.WHITE
         if not args.command is None:
+            sys.stderr.write("Engine is {}.\n".format(self._engine_color))
             self._engine = GuiGtpEngine(args.command)
             self._init_engine()
         self._render()
@@ -215,6 +222,9 @@ class Gui():
             self._lock = False
 
     def _engine_play_and_unlock(self):
+        if self._engine_color != self._game.tomove:
+            self._lock = False
+            return
         try:
             # TODO: check the vertex is legal or not
             vtx = self._engine.genmove_and_return(self._game.tomove)
@@ -243,6 +253,8 @@ class Gui():
     def _init_engine(self):
        self._engine.clear_board()
        self._engine.boardsize(self.board_size)
+       self._lock = True
+       self._root.after(10, self._engine_play_and_unlock)
 
     def quit(self):
         if self.is_engine_valid():
@@ -265,6 +277,11 @@ if __name__ == '__main__':
                         metavar="<string>",
                         default=None,
                         help="The command of GTP engine.")
+    parser.add_argument("--engine-color",
+                        type=str,
+                        metavar="<string>",
+                        default="black",
+                        help="The color of GTP engine. Should be black/white.")
     args = parser.parse_args()
     gui = Gui(args)
     gui.quit()
