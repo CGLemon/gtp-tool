@@ -139,7 +139,7 @@ class MatchTool:
         self.sgf_files = list()
         self.save_dir = args.save_dir
         self.k_decay_factor = max(args.k_decay_factor, 1.)
-        self.start_time = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
+        self.start_time = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 
         if args.sgf_dir is not None:
             self.sgf_files.extend(glob.glob(os.path.join(args.sgf_dir, "*.sgf")))
@@ -210,7 +210,7 @@ class MatchTool:
         return history, curr_color
 
     def _save_sgf(self, black, white, history, result):
-        curr_time = datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
+        curr_time = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
         sgf = "(;GM[1]FF[4]SZ[{}]KM[{}]RU[unknown]PB[{}]PW[{}]DT[{}]".format(
                   self.board_size, self.komi, black["name"], white["name"], curr_time)
         if result is not None:
@@ -236,6 +236,26 @@ class MatchTool:
             sgf_path = os.path.join(self.save_dir, sgf_name)
             with open(sgf_path, "w") as f:
                 f.write(sgf)
+        # save pgn file for BayesElo sysyem
+        pgn = str()
+        pgn += "[Event \"{}\"]\n".format("?")
+        pgn += "[Site \"{}\"]\n".format("?")
+        pgn += "[Date \"{}\"]\n".format(curr_time)
+        pgn += "[Round \"{}\"]\n".format("?")
+        pgn += "[White \"{}\"]\n".format(white["name"])
+        pgn += "[Black \"{}\"]\n".format(black["name"])
+        if "b+" in result.lower():
+            pgn_result = "0-1"
+        elif "w+" in result.lower():
+            pgn_result = "1-0"
+        else:
+            pgn_result = "1/2-1/2"
+        pgn += "[Result \"{}\"]\n\n".format(pgn_result)
+        pgn += "{}\n\n".format(pgn_result)
+        if self.save_dir:
+            pgn_path = os.path.join(self.save_dir, "result.pgn")
+            with open(pgn_path, "a") as f:
+                f.write(pgn)
 
     def _get_result_txt_name(self):
         filename = "result-{}.txt".format(self.start_time)

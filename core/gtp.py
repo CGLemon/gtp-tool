@@ -60,8 +60,11 @@ class GtpColor:
 class GtpVertex:
     PASS_STR = "pass"
     RESIGN_STR = "resign"
+    NULL_STR = "null"
+
     PASS_VERTEX = 100 * 100
     RESIGN_VERTEX = 100 * 100 + 1
+    NULL_VERTEX = 100 * 100 + 2
 
     def __init__(self, val=None):
         self._vertex = None
@@ -76,7 +79,8 @@ class GtpVertex:
             self._parse_coord(val)
         elif isinstance(val, int):
             if val == self.PASS_VERTEX or \
-                   val == self.RESIGN_VERTEX:
+                   val == self.RESIGN_VERTEX or \
+                   val == self.NULL_VERTEX:
                 self._vertex = val
         else:
             raise Exception("Not a vertex data.")
@@ -101,6 +105,8 @@ class GtpVertex:
             self._vertex = self.PASS_VERTEX
         elif val == self.RESIGN_STR.lower():
             self._vertex = self.RESIGN_VERTEX
+        elif val == self.NULL_STR.lower():
+            self._vertex = self.NULL_VERTEX
         else:
             x = ord(val[0]) - ord('a')
             if x >= (ord('i') - ord('a')):
@@ -120,9 +126,13 @@ class GtpVertex:
     def is_resign(self):
         return str(self) == self.RESIGN_STR
 
+    def is_null(self):
+        return str(self) == self.NULL_STR
+
     def is_move(self):
         return not self.is_pass() and \
-                   not self.is_resign()
+                   not self.is_resign() and \
+                   not self.is_null()
 
     def to_str(self):
         if self._vertex is None:
@@ -131,7 +141,9 @@ class GtpVertex:
         if isinstance(self._vertex, int):
             if self._vertex == self.PASS_VERTEX:
                 return self.PASS_STR
-            return self.RESIGN_STR
+            elif self._vertex == self.RESIGN_VERTEX:
+                return self.RESIGN_STR
+            return self.NULL_STR
 
         # must be the tuple
         x, y = self._vertex
@@ -141,11 +153,7 @@ class GtpVertex:
         return self.to_str()
 
 class Query:
-    NORMAL = 1
-    ANALYSIS = 2
-
-    def __init__(self, gtp_command, query_type=NORMAL):
-        self.type = query_type
+    def __init__(self, gtp_command):
         self.gtp_command = gtp_command
         self.result = None # = or ?
         self.response = list()
@@ -154,7 +162,7 @@ class Query:
         return self.response
 
     def get_main_command(self):
-        buf = self.gtp_command.split()
+        buf = self.gtp_command.strip().split()
         if buf is not None:
             return buf[0]
         return None
@@ -217,10 +225,9 @@ class GTPEnginePipe:
         except queue.Full:
             self._remaining -= 1
 
-    def push_gtp_command(self, cmd, query_type):
+    def push_gtp_command(self, cmd):
         query = Query(
-            gtp_command="{}\n".format(cmd.strip()),
-            query_type=query_type
+            gtp_command="{}\n".format(cmd.strip())
         )
         self.push_query(query)
 
@@ -251,11 +258,17 @@ class GTPEnginePipe:
 
     def _handle_gtp_loop(self):
         handling_query = None
+        receiving_analysis = False
         while self._running:
             if handling_query is None:
                 try:
                     query = self._wait_queue.get(block=True, timeout=0.1)
                     handling_query = query
+
+                    main_command = handling_query.get_main_command()
+                    if len(main_command.split("-")) <= 2 and \
+                           main_command.split("-")[-1] in ["analyze", "analyze_genmove"]:
+                        receiving_analysis = True
                 except queue.Empty:
                     continue
 
@@ -265,8 +278,9 @@ class GTPEnginePipe:
                 break
 
             if not line:
-                if handling_query.type == Query.ANALYSIS:
-                    self._analysis_queue.put({"type" : "end", "line" : None})
+                if receiving_analysis:
+                    self._analysis_queue.put({"type" : "end", "data" : None})
+                    receiving_analysis = False
                 self._finish_queue.put(handling_query)
                 handling_query = None
                 continue
@@ -276,8 +290,8 @@ class GTPEnginePipe:
                 handling_query.result = line.split()[0]
                 line = line[1:].strip()
 
-            if handling_query.type == Query.ANALYSIS and len(line) > 0:
-                analysis_out = {"type" : "info", "line" : line}
+            if receiving_analysis and len(line) > 0:
+                analysis_out = {"type" : "info", "data" : line}
                 if "play" in line:
                     analysis_out["type"] = "play"
                 self._analysis_queue.put(analysis_out)
@@ -347,7 +361,7 @@ class GtpEngineBase:
         if res == "=":
             self._supported_list = val.strip().split()
 
-    def _send_base(self, gtp_command, query_type=Query.NORMAL):
+    def _send_base(self, gtp_command):
         if not self._pipe.is_running():
             raise Exception("Engine is stop.")
 
@@ -361,16 +375,16 @@ class GtpEngineBase:
         if cmd_list[0] not in self._supported_list:
             raise Exception("Current command is not supported.")
 
-        self._pipe.push_gtp_command(gtp_command, query_type)
+        self._pipe.push_gtp_command(gtp_command)
 
     def idle(self, sec=1.0):
         # The queue/pipe may not update their status right now. Should
         # wait some time.
         time.sleep(sec)
 
-    def send_command(self, val, query_type=Query.NORMAL):
+    def send_command(self, val):
         try:
-            self._send_base(val, query_type)
+            self._send_base(val)
         except Exception as err:
             sys.stderr.write("{}\n".format(str(err)))
             return False
@@ -386,7 +400,7 @@ class GtpEngineBase:
         return self._pipe.analysis_empty()
 
     def get_analysis_line(self):
-        return self._pipe.try_get_analysis(True)
+        return self._pipe.try_get_analysis(block=True)
 
     def query_empty(self):
         return self._pipe.query_empty()
@@ -434,12 +448,12 @@ class GtpEngine(GtpEngineBase):
 
     def __init__(self, command):
         super().__init__(command)
-        self.raise_err = False
+        self.raise_err = True
         self._self_check()
 
     def _self_check(self):
         for c in self.SUPPORTED_LIST:
-            if not self.support(c):
+            if not self.support(c) and self.raise_err:
                 raise Exception("Need to support for GTP command: {}.".format(c))
 
     def return_response(self):
@@ -488,9 +502,6 @@ class GtpEngine(GtpEngineBase):
     def genmove(self, color):
         self.send_command("genmove {}".format(color))
         return self.return_response()
-
-    def async_genmove(self, color):
-        self.send_command("genmove {}".format(color))
 
 if __name__ == '__main__':
     try:
