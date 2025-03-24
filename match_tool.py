@@ -139,6 +139,7 @@ class MatchTool:
         self.sgf_files = list()
         self.save_dir = args.save_dir
         self.k_decay_factor = max(args.k_decay_factor, 1.)
+        self.sample_elo_factor = max(args.sample_elo_factor, 1.)
         self.start_time = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 
         if args.sgf_dir is not None:
@@ -290,7 +291,7 @@ class MatchTool:
         p1 = self._status.pop(0)
         idx = random_select_by_elo(
                   self._status,
-                  lambda v: 1.0 / (1.0 + pow(10.0, v / 100.0))
+                  lambda v: 1.0 / (1.0 + pow(10.0, v / self.sample_elo_factor))
               )
         p2 = self._status.pop(idx)
 
@@ -514,6 +515,11 @@ if __name__ == '__main__':
                         metavar="<float>",
                         default=25,
                         help="Halve the K factor after playing factor games.")
+    parser.add_argument("--sample-elo-factor",
+                        type=float,
+                        metavar="<float>",
+                        default=400.0,
+                        help="")
     args = parser.parse_args()
 
     if args.engines is None:
